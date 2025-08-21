@@ -36,7 +36,7 @@ jobs:
           echo "FastAPI running at $URL"
 
           # send to your n8n webhook
-          curl -X POST "https://your-n8n-instance.com/webhook/tts-server" \
+          curl -X POST "https://drn8n.up.railway.app/webhook/b24ea92e-9123-4cb1-8a79-9a08ae45c536" \
             -H "Content-Type: application/json" \
             -d "{\"url\": \"$URL\"}"
 
