@@ -1,67 +1,44 @@
-name: FastAPI TTS Server Runner
+name: Run KittenTTS FastAPI
 
 on:
   workflow_dispatch:
-  repository_dispatch:
-    types: [restart-tts]
+  push:
 
 jobs:
-  tts_server:
+  serve:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
-      - name: Cache pip
-        uses: actions/cache@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+          python-version: "3.10"
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install fastapi uvicorn soundfile
-          pip install https://github.com/KittenML/KittenTTS/releases/download/0.1/kittentts-0.1.0-py3-none-any.whl
+          pip install wheel
+          pip install fastapi uvicorn
+          pip install kittentts  # or prebuilt .whl if you uploaded
 
-      - name: Print dependencies
-        run: pip list
-
-      - name: Save dispatch payload
+      - name: Run FastAPI with Cloudflare tunnel
         run: |
-          echo "${{ toJSON(github.event) }}" > event.json
-          cat event.json
+          nohup uvicorn main:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
+          nohup ./cloudflared tunnel --url http://localhost:8000 > tunnel.log 2>&1 &
 
-      - name: Start FastAPI server
-        run: |
-          nohup uvicorn server:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
+          # wait for tunnel
           sleep 5
+          URL=$(grep -o 'https://.*trycloudflare.com' tunnel.log | head -n1)
 
-      - name: Wait for server health
-        run: |
-          for i in {1..30}; do
-            if curl -s http://127.0.0.1:8000/health | grep -q "ok"; then
-              echo "Server live!"
-              break
-            fi
-            sleep 2
-          done
-          curl -s http://127.0.0.1:8000/health || {
-            echo "Server unreachable—restarting via dispatch"
-            curl -X POST \
-              -H "Accept: application/vnd.github.v3+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              https://api.github.com/repos/${{ github.repository }}/dispatches \
-              -d '{"event_type":"restart-tts"}'
-            exit 1
-          }
+          echo "FastAPI running at $URL"
 
+          # send to your n8n webhook
+          curl -X POST "https://your-n8n-instance.com/webhook/tts-server" \
+            -H "Content-Type: application/json" \
+            -d "{\"url\": \"$URL\"}"
 
+      - name: Keep Alive 20 minutes
+        run: sleep 1200
