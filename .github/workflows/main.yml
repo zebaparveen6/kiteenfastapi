@@ -23,8 +23,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install wheel
           pip install fastapi uvicorn
-          # Install kittentts - adjust this based on your actual package
-          pip install kittentts || echo "kittentts not found, continuing..."
+          # Install audio processing libraries
+          pip install soundfile numpy scipy
+          pip install pydub  # Optional for format conversion
+          # Install KittenTTS from official release
+          pip install https://github.com/KittenML/KittenTTS/releases/download/0.1/kittentts-0.1.0-py3-none-any.whl
           
       - name: Create main.py if not exists
         run: |
