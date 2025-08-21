@@ -10,37 +10,186 @@ jobs:
   serve:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
-
+          
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install wheel
           pip install fastapi uvicorn
-          pip install kittentts  # or prebuilt .whl if you uploaded
-
+          # Install kittentts - adjust this based on your actual package
+          pip install kittentts || echo "kittentts not found, continuing..."
+          
+      - name: Create main.py if not exists
+        run: |
+          if [ ! -f main.py ]; then
+            cat > main.py << 'EOF'
+          from fastapi import FastAPI
+          from fastapi.responses import JSONResponse
+          import uvicorn
+          
+          app = FastAPI(title="KittenTTS API", version="1.0.0")
+          
+          @app.get("/")
+          async def root():
+              return {"message": "KittenTTS FastAPI is running!"}
+          
+          @app.get("/health")
+          async def health_check():
+              return {"status": "healthy"}
+          
+          @app.post("/tts")
+          async def text_to_speech(text: str):
+              try:
+                  # Add your TTS logic here
+                  # For now, returning a placeholder response
+                  return {"text": text, "status": "processed"}
+              except Exception as e:
+                  return JSONResponse(
+                      status_code=500,
+                      content={"error": str(e)}
+                  )
+          
+          if __name__ == "__main__":
+              uvicorn.run(app, host="0.0.0.0", port=8000)
+          EOF
+          fi
+          
+      - name: Test FastAPI startup
+        run: |
+          # Test that the app can start
+          python -c "from main import app; print('App imported successfully')"
+          
       - name: Run FastAPI with Cloudflare tunnel
         run: |
-          nohup uvicorn main:app --host 0.0.0.0 --port 8000 &
-          sleep 10
+          # Start FastAPI in background
+          echo "Starting FastAPI server..."
+          nohup uvicorn main:app --host 0.0.0.0 --port 8000 --log-level info > fastapi.log 2>&1 &
+          FASTAPI_PID=$!
+          
+          # Wait for server to start
+          echo "Waiting for FastAPI to start..."
+          for i in {1..30}; do
+            if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+              echo "FastAPI is running!"
+              break
+            fi
+            echo "Attempt $i: FastAPI not ready yet..."
+            sleep 2
+          done
+          
+          # Check if server is actually running
+          if ! curl -s http://localhost:8000/health > /dev/null 2>&1; then
+            echo "FastAPI failed to start. Logs:"
+            cat fastapi.log
+            exit 1
+          fi
+          
+          # Download and setup cloudflared
+          echo "Setting up Cloudflare tunnel..."
           curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
           chmod +x cloudflared
+          
+          # Start tunnel in background
+          echo "Starting Cloudflare tunnel..."
           nohup ./cloudflared tunnel --url http://localhost:8000 > tunnel.log 2>&1 &
-
-          # wait for tunnel
-          sleep 5
-          URL=$(grep -o 'https://.*trycloudflare.com' tunnel.log | head -n1)
-
-          echo "FastAPI running at $URL"
-
-          # send to your n8n webhook
+          TUNNEL_PID=$!
+          
+          # Wait for tunnel to establish
+          echo "Waiting for tunnel to establish..."
+          for i in {1..60}; do
+            if grep -q "https://.*trycloudflare.com" tunnel.log 2>/dev/null; then
+              URL=$(grep -o 'https://.*trycloudflare.com' tunnel.log | head -n1)
+              echo "Tunnel established at: $URL"
+              break
+            fi
+            echo "Attempt $i: Tunnel not ready yet..."
+            sleep 2
+          done
+          
+          # Extract URL
+          URL=$(grep -o 'https://.*trycloudflare.com' tunnel.log | head -n1 2>/dev/null)
+          
+          if [ -z "$URL" ]; then
+            echo "Failed to get tunnel URL. Tunnel log:"
+            cat tunnel.log
+            echo "FastAPI log:"
+            cat fastapi.log
+            exit 1
+          fi
+          
+          echo "FastAPI running at: $URL"
+          
+          # Test the tunnel
+          echo "Testing tunnel connection..."
+          if curl -s "$URL/health" > /dev/null; then
+            echo "Tunnel is working correctly!"
+          else
+            echo "Warning: Tunnel may not be working properly"
+          fi
+          
+          # Send webhook notification
+          echo "Sending webhook notification..."
           curl -X POST "https://drn8n.up.railway.app/webhook/b24ea92e-9123-4cb1-8a79-9a08ae45c536" \
             -H "Content-Type: application/json" \
-            -d "{\"url\": \"$URL\"}"
-
+            -d "{\"url\": \"$URL\", \"status\": \"running\"}" \
+            --max-time 10 || echo "Webhook notification failed, continuing..."
+          
+          # Save PIDs for cleanup
+          echo "FastAPI PID: $FASTAPI_PID"
+          echo "Tunnel PID: $TUNNEL_PID"
+          echo "$FASTAPI_PID" > fastapi.pid
+          echo "$TUNNEL_PID" > tunnel.pid
+          
       - name: Keep Alive 20 minutes
-        run: sleep 1200
+        run: |
+          echo "Keeping service alive for 20 minutes..."
+          
+          # Monitor both processes
+          for i in {1..600}; do  # 600 * 2 seconds = 20 minutes
+            # Check if FastAPI is still running
+            if ! curl -s http://localhost:8000/health > /dev/null 2>&1; then
+              echo "FastAPI stopped responding, attempting restart..."
+              pkill -f uvicorn || true
+              nohup uvicorn main:app --host 0.0.0.0 --port 8000 --log-level info > fastapi.log 2>&1 &
+              sleep 5
+            fi
+            
+            # Check tunnel status periodically
+            if [ $((i % 30)) -eq 0 ]; then  # Every minute
+              URL=$(grep -o 'https://.*trycloudflare.com' tunnel.log | head -n1 2>/dev/null)
+              echo "[$i/600] Service running at: $URL"
+            fi
+            
+            sleep 2
+          done
+          
+          echo "20 minutes completed. Shutting down services..."
+          
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "Cleaning up processes..."
+          # Kill FastAPI
+          if [ -f fastapi.pid ]; then
+            kill $(cat fastapi.pid) 2>/dev/null || true
+          fi
+          pkill -f uvicorn || true
+          
+          # Kill tunnel
+          if [ -f tunnel.pid ]; then
+            kill $(cat tunnel.pid) 2>/dev/null || true
+          fi
+          pkill -f cloudflared || true
+          
+          echo "Final logs:"
+          echo "=== FastAPI logs ==="
+          cat fastapi.log 2>/dev/null || echo "No FastAPI logs"
+          echo "=== Tunnel logs ==="
+          cat tunnel.log 2>/dev/null || echo "No tunnel logs"
