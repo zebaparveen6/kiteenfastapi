@@ -139,7 +139,7 @@ jobs:
           
           # Send webhook notification
           echo "Sending webhook notification..."
-          curl -X POST "https://drn8n.up.railway.app/webhook/b24ea92e-9123-4cb1-8a79-9a08ae45c536" \
+          curl -X POST "https://n8n-nightly-liyp.onrender.com/webhook/b24ea92e-9123-4cb1-8a79-9a08ae45c536" \
             -H "Content-Type: application/json" \
             -d "{\"url\": \"$URL\", \"status\": \"running\"}" \
             --max-time 10 || echo "Webhook notification failed, continuing..."
