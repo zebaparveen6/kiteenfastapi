@@ -235,71 +235,45 @@ jobs:
             retry_pip_install "fastapi==0.104.0 'uvicorn[standard]==0.24.0' pydantic==2.0.0"
           fi
           
-          # Install base dependencies with improved error handling
-          echo "📦 Installing base dependencies..."
-          
-          install_with_fallback() {
-            local packages="$1"
-            local fallback_packages="$2"
-            local description="$3"
-            
-            echo "📦 Installing $description..."
-            if ! retry_pip_install "$packages"; then
-              echo "⚠️ Primary installation failed for $description"
-              if [ -n "$fallback_packages" ]; then
-                echo "↪️ Attempting fallback installation..."
-                retry_pip_install "$fallback_packages"
-              else
-                echo "❌ No fallback available for $description"
-                return 1
-              fi
-            fi
-          }
-          
-          # Install core packages with fallbacks
-          install_with_fallback \
-            "'fastapi==0.104.0' 'uvicorn[standard]==0.24.0' 'pydantic==2.0.0'" \
-            "'fastapi>=0.104.0' 'uvicorn[standard]>=0.24.0' 'pydantic>=2.0.0'" \
-            "core FastAPI dependencies"
-          retry_pip_install "soundfile numpy scipy"
-          retry_pip_install "psutil aiofiles python-multipart"
-          
-          # Install PyTorch CPU version with robust error handling
-          echo "🔥 Installing PyTorch (CPU)..."
-          install_pytorch() {
+          # Install with retry logic and caching
+          retry_pip_install() {
+            local package="$1"
             local max_attempts=3
             local attempt=1
             
             while [ $attempt -le $max_attempts ]; do
-              echo "Attempt $attempt/$max_attempts: Installing PyTorch CPU"
-              if pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu --cache-dir="${{ env.PIP_CACHE_DIR }}"; then
-                # Verify installation
-                if python -c "import torch; import torchaudio; print(f'PyTorch {torch.__version__} installed successfully')"; then
-                  return 0
+              echo "Installing $package (attempt $attempt/$max_attempts)"
+              if pip install "$package" --cache-dir="${{ env.PIP_CACHE_DIR }}" --no-warn-script-location; then
+                echo "✅ $package installed successfully"
+                return 0
+              else
+                echo "❌ Failed to install $package (attempt $attempt)"
+                if [ $attempt -eq $max_attempts ]; then
+                  echo "⚠️ Continuing without $package"
+                  return 1
                 fi
+                sleep 5
+                attempt=$((attempt + 1))
               fi
-              
-              echo "❌ PyTorch installation attempt $attempt failed"
-              if [ $attempt -eq $max_attempts ]; then
-                echo "⚠️ All PyTorch installation attempts failed. Trying fallback method..."
-                # Fallback to pip index
-                pip install torch torchaudio --cache-dir="${{ env.PIP_CACHE_DIR }}"
-                return $?
-              fi
-              
-              sleep $((attempt * 5))
-              attempt=$((attempt + 1))
             done
           }
           
-          install_pytorch
+          # Install base dependencies
+          echo "📦 Installing base dependencies..."
+          retry_pip_install "fastapi uvicorn[standard] pydantic"
+          retry_pip_install "soundfile numpy scipy"
+          retry_pip_install "psutil aiofiles python-multipart"
           
-          # Install optional dependencies with improved error handling
+          # Install PyTorch CPU version
+          echo "🔥 Installing PyTorch (CPU)..."
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu --cache-dir="${{ env.PIP_CACHE_DIR }}"
+          
+          # Install optional dependencies
           echo "🎵 Installing audio processing libraries..."
-          install_with_fallback "librosa==0.10.1" "librosa>=0.10.1" "librosa audio processing"
-          install_with_fallback "pydub==0.25.1" "pydub>=0.25.1" "pydub audio processing"
-          install_with_fallback "transformers==4.35.0" "transformers>=4.35.0" "transformers library"
-          install_with_fallback "huggingface-hub==0.19.0" "huggingface-hub>=0.19.0" "huggingface hub"
+          retry_pip_install "librosa"
+          retry_pip_install "pydub"
+          retry_pip_install "transformers"
+          retry_pip_install "huggingface-hub"
           
           echo "✅ Python dependencies installed"
           
@@ -344,68 +318,29 @@ jobs:
             echo "Will attempt runtime installation in the API"
           fi
           
-          # Pre-download models with robust error handling
+          # Pre-download models if possible
           echo "📥 Pre-downloading KittenTTS models..."
           python3 -c "
-import os
-import time
-from huggingface_hub import snapshot_download, HfFolder
-from huggingface_hub.utils import RepositoryNotFoundError, RevisionNotFoundError
-
-def download_model(repo_id, cache_dir, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            print(f'Downloading {repo_id} (attempt {attempt + 1}/{max_retries})...')
-            return snapshot_download(
-                repo_id=repo_id,
-                cache_dir=cache_dir,
-                resume_download=True,
-                local_files_only=False,
-                max_retries=3
-            )
-        except (RepositoryNotFoundError, RevisionNotFoundError) as e:
-            print(f'❌ Repository error: {e}')
-            return None
-        except Exception as e:
-            print(f'❌ Download failed (attempt {attempt + 1}): {e}')
-            if attempt < max_retries - 1:
-                wait_time = (attempt + 1) * 10
-                print(f'Waiting {wait_time} seconds before retry...')
-                time.sleep(wait_time)
-            else:
-                print('⚠️ All download attempts failed')
-                return None
-
-try:
-    cache_dir = '${{ env.MODEL_CACHE_DIR }}/huggingface'
-    os.makedirs(cache_dir, exist_ok=True)
-    
-    # Configure HuggingFace cache
-    HfFolder.save_config(
-        cache_dir=cache_dir,
-        hf_cache_home=cache_dir
-    )
-    
-    models = [
-        'KittenML/kitten-tts-nano-0.1',
-        # Add any other required models here
-    ]
-    
-    success = True
-    for model in models:
-        if download_model(model, cache_dir) is None:
-            success = False
-            print(f'⚠️ Failed to download {model}')
-    
-    if success:
-        print('✅ All models downloaded successfully')
-    else:
-        print('⚠️ Some models will be downloaded at runtime')
-        
-except Exception as e:
-    print(f'❌ Model pre-download setup failed: {e}')
-    print('Models will be downloaded at runtime')
-" || echo "⚠️ Model pre-download skipped"
+          try:
+              from huggingface_hub import snapshot_download
+              import os
+              
+              cache_dir = '${{ env.MODEL_CACHE_DIR }}/huggingface'
+              os.makedirs(cache_dir, exist_ok=True)
+              
+              print('Downloading KittenTTS nano model...')
+              snapshot_download(
+                  repo_id='KittenML/kitten-tts-nano-0.1',
+                  cache_dir=cache_dir,
+                  resume_download=True,
+                  local_files_only=False
+              )
+              print('✅ Model downloaded successfully')
+              
+          except Exception as e:
+              print(f'⚠️ Model pre-download failed: {e}')
+              print('Models will be downloaded at runtime')
+          " || echo "⚠️ Model pre-download skipped"
           
           echo "✅ KittenTTS setup completed"
           
@@ -413,37 +348,8 @@ except Exception as e:
         run: |
           echo "🔧 Setting up monitoring tools..."
           
-          # Function to install packages with retry
-          install_packages() {
-            local packages="$1"
-            local max_attempts=3
-            local attempt=1
-            
-            while [ $attempt -le $max_attempts ]; do
-              echo "Installing monitoring tools (attempt $attempt/$max_attempts)..."
-              if sudo apt-get install -y -qq $packages; then
-                echo "✅ Monitoring tools installed successfully"
-                return 0
-              fi
-              
-              echo "❌ Installation failed (attempt $attempt)"
-              if [ $attempt -eq $max_attempts ]; then
-                echo "⚠️ All installation attempts failed"
-                return 1
-              fi
-              
-              echo "Updating package lists..."
-              sudo apt-get update -qq
-              
-              sleep $((attempt * 2))
-              attempt=$((attempt + 1))
-            done
-          }
-          
-          # Install system monitoring tools with retry
-          if ! install_packages "htop iotop nethogs sysstat lsof"; then
-            echo "⚠️ Some monitoring tools failed to install, continuing with basic monitoring"
-          fi
+          # Install system monitoring tools
+          sudo apt-get install -y -qq htop iotop nethogs sysstat lsof
           
           # Create monitoring script
           cat > monitor.sh << 'EOF'
