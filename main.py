@@ -1580,7 +1580,7 @@ async def get_audio_file(filename: str):
     """Serve audio files with enhanced security and headers"""
     try:
         # Security: validate filename
-        if not re.match(r'^[a-f0-9\-]+\.(wav|mp3|ogg|flac), filename):
+        if not re.match(r'^[a-f0-9\-]+\.(wav|mp3|ogg|flac)', filename):
             raise HTTPException(status_code=400, detail="Invalid filename format")
         
         file_path = config.AUDIO_DIR / filename
