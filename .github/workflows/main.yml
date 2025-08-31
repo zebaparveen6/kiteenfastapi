@@ -156,185 +156,185 @@ jobs:
             
           echo "✅ System dependencies installed successfully"
 
-            - name: 🐍 Install Python Dependencies with Bulletproof Error Handling
-              run: |
-                echo "🐍 Installing Python dependencies with robust error handling..."
-                
-                # Define retry function with better error handling
-                retry_command() {
-                  local cmd="$1"
-                  local description="$2"
-                  local max_attempts=3
-                  local attempt=1
-                  
-                  while [ $attempt -le $max_attempts ]; do
-                    echo "📦 $description (attempt $attempt/$max_attempts)"
-                    
-                    if eval "$cmd"; then
-                      echo "✅ $description succeeded"
-                      return 0
-                    else
-                      local exit_code=$?
-                      echo "❌ $description failed with exit code $exit_code"
-                      
-                      if [ $attempt -eq $max_attempts ]; then
-                        echo "💥 All attempts failed for: $description"
-                        return $exit_code
-                      fi
-                      
-                      echo "⏳ Waiting before retry..."
-                      sleep $((attempt * 3))
-                      attempt=$((attempt + 1))
-                    fi
-                  done
-                }
-                
-                # Upgrade pip and essential tools first
-                echo "🔧 Upgrading pip and build tools..."
-                retry_command "python -m pip install --upgrade pip setuptools wheel --cache-dir='${{ env.PIP_CACHE_DIR }}'" "pip upgrade"
-                
-                # Create corrected requirements.txt with proper PyTorch syntax
-                echo "📝 Creating corrected requirements.txt..."
-                cat > requirements_fixed.txt << 'EOF'
-                # Core FastAPI dependencies (pinned for stability)
-                fastapi==0.104.1
-                uvicorn[standard]==0.24.0
-                pydantic==2.5.0
-                
-                # Audio processing essentials
-                soundfile==0.12.1
-                numpy==1.24.4
-                scipy==1.11.4
-                
-                # Optional audio libraries (installed separately)
-                # librosa==0.10.1
-                # pydub==0.25.1
-                
-                # Core ML dependencies (without local version specifiers)
-                transformers==4.35.2
-                tokenizers==0.15.0
-                huggingface-hub==0.19.4
-                
-                # System monitoring
-                psutil==5.9.6
-                
-                # HTTP & networking
-                httpx==0.25.2
-                aiofiles==23.2.1
-                python-multipart==0.0.6
-                
-                # Utilities
-                python-dotenv==1.0.0
-                typing-extensions==4.8.0
-                EOF
-                
-                # Install core dependencies first (most stable)
-                echo "🎯 Installing core FastAPI dependencies..."
-                retry_command "pip install fastapi==0.104.1 'uvicorn[standard]==0.24.0' pydantic==2.5.0 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Core FastAPI packages"
-                
-                # Install system dependencies
-                echo "⚙️ Installing system dependencies..."
-                retry_command "pip install psutil==5.9.6 aiofiles==23.2.1 python-multipart==0.0.6 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "System packages"
-                
-                # Install audio processing (essential)
-                echo "🎵 Installing audio processing dependencies..."
-                retry_command "pip install soundfile==0.12.1 numpy==1.24.4 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Audio essentials"
-                
-                # Install PyTorch CPU version (separate command to handle special index)
-                echo "🔥 Installing PyTorch CPU version..."
-                retry_command "pip install torch==2.1.0+cpu torchaudio==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu --cache-dir='${{ env.PIP_CACHE_DIR }}'" "PyTorch CPU"
-                
-                # Fallback PyTorch installation if CPU version fails
-                if ! python -c "import torch" 2>/dev/null; then
-                  echo "⚠️ CPU PyTorch failed, installing regular PyTorch..."
-                  retry_command "pip install torch==2.1.0 torchaudio==2.1.0 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "PyTorch regular"
-                fi
-                
-                # Install Hugging Face dependencies
-                echo "🤗 Installing Hugging Face dependencies..."
-                retry_command "pip install transformers==4.35.2 tokenizers==0.15.0 huggingface-hub==0.19.4 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Hugging Face"
-                
-                # Install remaining utilities
-                echo "🔧 Installing utility packages..."
-                retry_command "pip install httpx==0.25.2 python-dotenv==1.0.0 typing-extensions==4.8.0 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Utilities"
-                
-                # Install optional audio libraries (non-critical)
-                echo "🎼 Installing optional audio libraries..."
-                
-                # Try scipy first
-                if ! retry_command "pip install scipy==1.11.4 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "SciPy"; then
-                  echo "⚠️ SciPy installation failed, trying older version..."
-                  retry_command "pip install scipy==1.10.1 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "SciPy fallback" || echo "⚠️ SciPy installation failed, continuing without it"
-                fi
-                
-                # Try librosa (often problematic)
-                if ! retry_command "pip install librosa==0.10.1 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Librosa"; then
-                  echo "⚠️ Librosa installation failed, installing minimal audio processing..."
-                  retry_command "pip install librosa --no-deps --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Librosa no-deps" || echo "⚠️ Continuing without librosa"
-                fi
-                
-                # Try pydub (usually works)
-                retry_command "pip install pydub==0.25.1 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Pydub" || echo "⚠️ Continuing without pydub"
-                
-                # Comprehensive verification
-                echo "🔍 Verifying critical installations..."
-                
-                python3 -c "
-                import sys
-                
-                critical_packages = [
-                    ('fastapi', 'FastAPI'),
-                    ('uvicorn', 'Uvicorn'),
-                    ('pydantic', 'Pydantic'),
-                    ('soundfile', 'SoundFile'),
-                    ('numpy', 'NumPy'),
-                    ('psutil', 'PSUtil'),
-                    ('aiofiles', 'AIOFiles')
-                ]
-                
-                optional_packages = [
-                    ('torch', 'PyTorch'),
-                    ('transformers', 'Transformers'),
-                    ('huggingface_hub', 'Hugging Face Hub'),
-                    ('scipy', 'SciPy'),
-                    ('librosa', 'Librosa'),
-                    ('pydub', 'Pydub')
-                ]
-                
-                print('=== CRITICAL PACKAGE VERIFICATION ===')
-                critical_failed = []
-                
-                for module, name in critical_packages:
-                    try:
-                        __import__(module)
-                        print(f'✅ {name}: OK')
-                    except ImportError as e:
-                        print(f'❌ {name}: FAILED - {e}')
-                        critical_failed.append(name)
-                
-                print('\\n=== OPTIONAL PACKAGE VERIFICATION ===')
-                for module, name in optional_packages:
-                    try:
-                        __import__(module)
-                        print(f'✅ {name}: OK')
-                    except ImportError as e:
-                        print(f'⚠️ {name}: Not available - {e}')
-                
-                if critical_failed:
-                    print(f'\\n❌ CRITICAL FAILURE: Missing packages: {critical_failed}')
-                    print('The FastAPI server may not work properly.')
-                    sys.exit(1)
-                else:
-                    print('\\n✅ All critical packages verified successfully!')
-                    print('FastAPI server should work correctly.')
-                "
-                
-                # Final installation summary
-                echo "📊 Installation Summary:"
-                pip list | grep -E "(fastapi|uvicorn|pydantic|torch|transformers|soundfile|numpy)" || echo "No matching packages found"
-                
-                echo "✅ Python dependencies installation completed"
+      - name: 🐍 Install Python Dependencies with Bulletproof Error Handling
+        run: |
+          echo "🐍 Installing Python dependencies with robust error handling..."
           
+          # Define retry function with better error handling
+          retry_command() {
+            local cmd="$1"
+            local description="$2"
+            local max_attempts=3
+            local attempt=1
+            
+            while [ $attempt -le $max_attempts ]; do
+              echo "📦 $description (attempt $attempt/$max_attempts)"
+              
+              if eval "$cmd"; then
+                echo "✅ $description succeeded"
+                return 0
+              else
+                local exit_code=$?
+                echo "❌ $description failed with exit code $exit_code"
+                
+                if [ $attempt -eq $max_attempts ]; then
+                  echo "💥 All attempts failed for: $description"
+                  return $exit_code
+                fi
+                
+                echo "⏳ Waiting before retry..."
+                sleep $((attempt * 3))
+                attempt=$((attempt + 1))
+              fi
+            done
+          }
+          
+          # Upgrade pip and essential tools first
+          echo "🔧 Upgrading pip and build tools..."
+          retry_command "python -m pip install --upgrade pip setuptools wheel --cache-dir='${{ env.PIP_CACHE_DIR }}'" "pip upgrade"
+          
+          # Create corrected requirements.txt with proper PyTorch syntax
+          echo "📝 Creating corrected requirements.txt..."
+          cat > requirements_fixed.txt << 'EOF'
+          # Core FastAPI dependencies (pinned for stability)
+          fastapi==0.104.1
+          uvicorn[standard]==0.24.0
+          pydantic==2.5.0
+          
+          # Audio processing essentials
+          soundfile==0.12.1
+          numpy==1.24.4
+          scipy==1.11.4
+          
+          # Optional audio libraries (installed separately)
+          # librosa==0.10.1
+          # pydub==0.25.1
+          
+          # Core ML dependencies (without local version specifiers)
+          transformers==4.35.2
+          tokenizers==0.15.0
+          huggingface-hub==0.19.4
+          
+          # System monitoring
+          psutil==5.9.6
+          
+          # HTTP & networking
+          httpx==0.25.2
+          aiofiles==23.2.1
+          python-multipart==0.0.6
+          
+          # Utilities
+          python-dotenv==1.0.0
+          typing-extensions==4.8.0
+          EOF
+          
+          # Install core dependencies first (most stable)
+          echo "🎯 Installing core FastAPI dependencies..."
+          retry_command "pip install fastapi==0.104.1 'uvicorn[standard]==0.24.0' pydantic==2.5.0 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Core FastAPI packages"
+          
+          # Install system dependencies
+          echo "⚙️ Installing system dependencies..."
+          retry_command "pip install psutil==5.9.6 aiofiles==23.2.1 python-multipart==0.0.6 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "System packages"
+          
+          # Install audio processing (essential)
+          echo "🎵 Installing audio processing dependencies..."
+          retry_command "pip install soundfile==0.12.1 numpy==1.24.4 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Audio essentials"
+          
+          # Install PyTorch CPU version (separate command to handle special index)
+          echo "🔥 Installing PyTorch CPU version..."
+          retry_command "pip install torch==2.1.0+cpu torchaudio==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu --cache-dir='${{ env.PIP_CACHE_DIR }}'" "PyTorch CPU"
+          
+          # Fallback PyTorch installation if CPU version fails
+          if ! python -c "import torch" 2>/dev/null; then
+            echo "⚠️ CPU PyTorch failed, installing regular PyTorch..."
+            retry_command "pip install torch==2.1.0 torchaudio==2.1.0 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "PyTorch regular"
+          fi
+          
+          # Install Hugging Face dependencies
+          echo "🤗 Installing Hugging Face dependencies..."
+          retry_command "pip install transformers==4.35.2 tokenizers==0.15.0 huggingface-hub==0.19.4 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Hugging Face"
+          
+          # Install remaining utilities
+          echo "🔧 Installing utility packages..."
+          retry_command "pip install httpx==0.25.2 python-dotenv==1.0.0 typing-extensions==4.8.0 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Utilities"
+          
+          # Install optional audio libraries (non-critical)
+          echo "🎼 Installing optional audio libraries..."
+          
+          # Try scipy first
+          if ! retry_command "pip install scipy==1.11.4 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "SciPy"; then
+            echo "⚠️ SciPy installation failed, trying older version..."
+            retry_command "pip install scipy==1.10.1 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "SciPy fallback" || echo "⚠️ SciPy installation failed, continuing without it"
+          fi
+          
+          # Try librosa (often problematic)
+          if ! retry_command "pip install librosa==0.10.1 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Librosa"; then
+            echo "⚠️ Librosa installation failed, installing minimal audio processing..."
+            retry_command "pip install librosa --no-deps --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Librosa no-deps" || echo "⚠️ Continuing without librosa"
+          fi
+          
+          # Try pydub (usually works)
+          retry_command "pip install pydub==0.25.1 --cache-dir='${{ env.PIP_CACHE_DIR }}'" "Pydub" || echo "⚠️ Continuing without pydub"
+          
+          # Comprehensive verification
+          echo "🔍 Verifying critical installations..."
+          
+          python3 -c "
+          import sys
+          
+          critical_packages = [
+              ('fastapi', 'FastAPI'),
+              ('uvicorn', 'Uvicorn'),
+              ('pydantic', 'Pydantic'),
+              ('soundfile', 'SoundFile'),
+              ('numpy', 'NumPy'),
+              ('psutil', 'PSUtil'),
+              ('aiofiles', 'AIOFiles')
+          ]
+          
+          optional_packages = [
+              ('torch', 'PyTorch'),
+              ('transformers', 'Transformers'),
+              ('huggingface_hub', 'Hugging Face Hub'),
+              ('scipy', 'SciPy'),
+              ('librosa', 'Librosa'),
+              ('pydub', 'Pydub')
+          ]
+          
+          print('=== CRITICAL PACKAGE VERIFICATION ===')
+          critical_failed = []
+          
+          for module, name in critical_packages:
+              try:
+                  __import__(module)
+                  print(f'✅ {name}: OK')
+              except ImportError as e:
+                  print(f'❌ {name}: FAILED - {e}')
+                  critical_failed.append(name)
+          
+          print('\\n=== OPTIONAL PACKAGE VERIFICATION ===')
+          for module, name in optional_packages:
+              try:
+                  __import__(module)
+                  print(f'✅ {name}: OK')
+              except ImportError as e:
+                  print(f'⚠️ {name}: Not available - {e}')
+          
+          if critical_failed:
+              print(f'\\n❌ CRITICAL FAILURE: Missing packages: {critical_failed}')
+              print('The FastAPI server may not work properly.')
+              sys.exit(1)
+          else:
+              print('\\n✅ All critical packages verified successfully!')
+              print('FastAPI server should work correctly.')
+          "
+          
+          # Final installation summary
+          echo "📊 Installation Summary:"
+          pip list | grep -E "(fastapi|uvicorn|pydantic|torch|transformers|soundfile|numpy)" || echo "No matching packages found"
+          
+          echo "✅ Python dependencies installation completed"
+        
       - name: 🐱 Install KittenTTS with Caching & Error Handling
         run: |
           echo "🐱 Installing KittenTTS..."
