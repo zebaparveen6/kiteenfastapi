@@ -29,6 +29,23 @@ os.makedirs(AUDIO_DIR, exist_ok=True)
 tts_model = None
 model_lock = threading.Lock()
 
+# --- FIX 1: DYNAMIC BASE URL HANDLING ---
+# Reads the public-facing URL from an environment variable set by the workflow.
+# Falls back to a placeholder if not set, preventing crashes.
+BASE_URL = os.getenv('BASE_URL', 'https://placeholder-url-not-set.trycloudflare.com')
+if 'placeholder' in BASE_URL:
+    logger.warning(f"BASE_URL environment variable not found. Using placeholder: {BASE_URL}")
+else:
+    logger.info(f"Public URL successfully loaded: {BASE_URL}")
+
+# --- FIX 2: API METRICS TRACKING ---
+# In-memory dictionary to store real-time metrics for the /metrics endpoint.
+api_metrics = {
+    "tts_requests_total": 0,
+    "tts_requests_success": 0,
+    "tts_requests_failed": 0,
+}
+
 # Create FastAPI app
 app = FastAPI(
     title="KittenTTS API",
@@ -242,6 +259,7 @@ async def root():
         "tts_model_status": model_status,
         "endpoints": {
             "health": "/health",
+            "metrics": "/metrics", # Added for clarity
             "tts": "/tts (POST)",
             "voices": "/voices (GET)",
             "audio": "/audio/{filename} (GET)",
@@ -265,12 +283,31 @@ async def health_check():
         "audio_files_count": len(os.listdir(AUDIO_DIR)) if os.path.exists(AUDIO_DIR) else 0
     }
 
+@app.get("/metrics")
+async def get_metrics():
+    """[NEW] Metrics endpoint for comprehensive monitoring."""
+    try:
+        audio_files_count = len(os.listdir(AUDIO_DIR))
+    except Exception as e:
+        logger.error(f"Could not read audio directory for metrics: {e}")
+        audio_files_count = -1  # Indicate an error
+
+    # Create a copy to ensure thread safety
+    current_metrics = api_metrics.copy()
+    current_metrics.update({
+        "model_loaded": tts_model is not None,
+        "current_audio_files": audio_files_count,
+        "timestamp": datetime.now().isoformat()
+    })
+    return JSONResponse(content=current_metrics)
+
 @app.post("/tts", response_model=TTSResponse)
 async def text_to_speech(request: TTSRequest, background_tasks: BackgroundTasks):
     """
     Convert text to speech using real KittenTTS
     Perfect for n8n workflows and Telegram integration
     """
+    api_metrics["tts_requests_total"] += 1
     try:
         logger.info(f"📝 TTS request: '{request.text[:50]}...' voice='{request.voice}'")
         
@@ -299,9 +336,8 @@ async def text_to_speech(request: TTSRequest, background_tasks: BackgroundTasks)
             format=request.format
         )
         
-        # Create audio URL (will be updated with actual tunnel URL)
-        base_url = "https://your-tunnel-url.trycloudflare.com"
-        audio_url = f"{base_url}/audio/{filename}"
+        # --- FIX 1 in action: Use the dynamic BASE_URL ---
+        audio_url = f"{BASE_URL}/audio/{filename}"
         
         response = TTSResponse(
             text=request.text,
@@ -317,14 +353,17 @@ async def text_to_speech(request: TTSRequest, background_tasks: BackgroundTasks)
         
         logger.info(f"✅ TTS completed: {filename}")
         
+        api_metrics["tts_requests_success"] += 1
         # Schedule cleanup after 1 hour
         background_tasks.add_task(cleanup_file, filename, 3600)
         
         return response
         
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        api_metrics["tts_requests_failed"] += 1
+        raise # Re-raise the exception after counting it
     except Exception as e:
+        api_metrics["tts_requests_failed"] += 1
         logger.error(f"❌ TTS error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"TTS generation failed: {str(e)}")
 
@@ -432,7 +471,7 @@ async def get_status():
     }
 
 @app.post("/test-voice")
-async def test_voice(voice: str = "expr-voice-2-f"):
+async def test_voice(voice: str = "expr-voice-2-f", background_tasks: BackgroundTasks = BackgroundTasks()):
     """Test a specific voice with sample text"""
     if tts_model is None:
         raise HTTPException(status_code=503, detail="TTS model not loaded")
@@ -446,7 +485,7 @@ async def test_voice(voice: str = "expr-voice-2-f"):
         format="wav"
     )
     
-    return await text_to_speech(request, BackgroundTasks())
+    return await text_to_speech(request, background_tasks)
 
 @app.delete("/cleanup")
 async def cleanup_old_files():
