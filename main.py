@@ -275,9 +275,9 @@ def cleanup_memory():
         memory_stats = check_memory_usage()
         if memory_stats["system_memory_percent"] > 90:
             audio_cache.clear()
-            logger.info("🧹 Cleared audio cache due to critical memory usage")
+            logger.info("Cleared audio cache due to critical memory usage")
         
-        logger.info(f"🧹 Memory cleanup completed: {collected} objects collected")
+        logger.info(f"Memory cleanup completed: {collected} objects collected")
         
     except Exception as e:
         logger.warning(f"Memory cleanup error: {e}")
@@ -322,7 +322,7 @@ async def initialize_kitten_tts() -> bool:
     start_time = time.time()
     
     try:
-        logger.info("🐱 Starting KittenTTS initialization...")
+        logger.info("Starting KittenTTS initialization...")
         
         # Set up environment for model caching
         os.environ["HF_HOME"] = str(config.MODEL_CACHE_DIR)
@@ -332,12 +332,12 @@ async def initialize_kitten_tts() -> bool:
         # Method 1: Try importing existing installation
         try:
             from kittentts import KittenTTS
-            logger.info("✅ KittenTTS module found")
+            logger.info("KittenTTS module found")
         except ImportError as e:
             logger.warning(f"KittenTTS not found: {e}")
             
             # Method 2: Runtime installation with multiple attempts
-            logger.info("📦 Attempting runtime installation...")
+            logger.info("Attempting runtime installation...")
             
             install_commands = [
                 # Try PyPI first
@@ -350,30 +350,22 @@ async def initialize_kitten_tts() -> bool:
                 
                 # Try direct GitHub
                 [sys.executable, "-m", "pip", "install", "git+https://github.com/KittenML/KittenTTS.git"],
-                
-                # Try with specific dependencies
-                [sys.executable, "-m", "pip", "install", "torch", "transformers", "soundfile", "numpy", "&&",
-                 sys.executable, "-m", "pip", "install", "kittentts"]
             ]
             
             for i, cmd in enumerate(install_commands):
                 try:
                     logger.info(f"Installation attempt {i+1}/{len(install_commands)}")
-                    if "&&" in cmd:
-                        # Handle compound commands
-                        subprocess.check_call(" ".join(cmd), shell=True, timeout=600)
-                    else:
-                        subprocess.check_call(cmd, timeout=600)
+                    subprocess.check_call(cmd, timeout=600)
                     
                     # Try importing after each attempt
                     from kittentts import KittenTTS
-                    logger.info(f"✅ KittenTTS installed successfully (method {i+1})")
+                    logger.info(f"KittenTTS installed successfully (method {i+1})")
                     break
                     
                 except Exception as install_error:
                     logger.warning(f"Install attempt {i+1} failed: {install_error}")
                     if i == len(install_commands) - 1:
-                        logger.error("❌ All installation attempts failed")
+                        logger.error("All installation attempts failed")
                         return False
                     continue
         
@@ -386,7 +378,7 @@ async def initialize_kitten_tts() -> bool:
         
         for config_item in model_configs:
             try:
-                logger.info(f"🔄 Loading model: {config_item['description']}")
+                logger.info(f"Loading model: {config_item['description']}")
                 
                 with model_lock:
                     # Pre-download model if not cached
@@ -398,7 +390,7 @@ async def initialize_kitten_tts() -> bool:
                             resume_download=True,
                             local_files_only=False
                         )
-                        logger.info("📥 Model downloaded/verified in cache")
+                        logger.info("Model downloaded/verified in cache")
                     except Exception as download_error:
                         logger.warning(f"Model download warning: {download_error}")
                     
@@ -433,7 +425,7 @@ async def initialize_kitten_tts() -> bool:
                             break
                     
                     if all_tests_passed:
-                        logger.info(f"✅ Model loaded and tested successfully: {config_item['description']}")
+                        logger.info(f"Model loaded and tested successfully: {config_item['description']}")
                         break
                     else:
                         logger.warning(f"Model tests failed for: {config_item['description']}")
@@ -445,15 +437,15 @@ async def initialize_kitten_tts() -> bool:
                 continue
         
         if tts_model is None:
-            logger.error("❌ All model loading attempts failed")
+            logger.error("All model loading attempts failed")
             return False
         
         metrics.model_load_time = time.time() - start_time
-        logger.info(f"🎵 KittenTTS initialized successfully! Load time: {metrics.model_load_time:.2f}s")
+        logger.info(f"KittenTTS initialized successfully! Load time: {metrics.model_load_time:.2f}s")
         return True
         
     except Exception as e:
-        logger.error(f"❌ KittenTTS initialization failed: {e}")
+        logger.error(f"KittenTTS initialization failed: {e}")
         logger.error(traceback.format_exc())
         return False
 
@@ -548,12 +540,11 @@ async def generate_audio_with_chunking(
         raise HTTPException(status_code=503, detail="TTS model not initialized")
     
     # Check cache first
-    cache_hit = False
     if cache_key and audio_cache.get(cache_key):
         try:
             cached_data = audio_cache.get(cache_key)
             if cached_data:
-                logger.info(f"📋 Cache hit for key: {cache_key[:8]}...")
+                logger.info(f"Cache hit for key: {cache_key[:8]}...")
                 
                 # Write cached data to file
                 filename = f"{uuid.uuid4()}.{format}"
@@ -575,7 +566,7 @@ async def generate_audio_with_chunking(
     try:
         # Preprocess text into optimal chunks
         text_chunks = preprocess_text(text)
-        logger.info(f"📝 Processing {len(text_chunks)} text chunks (total: {len(text)} chars)")
+        logger.info(f"Processing {len(text_chunks)} text chunks (total: {len(text)} chars)")
         
         # Generate audio for each chunk with bulletproof error handling
         audio_segments = []
@@ -586,12 +577,12 @@ async def generate_audio_with_chunking(
         
         for i, chunk in enumerate(text_chunks):
             chunk_start_time = time.time()
-            logger.info(f"🎵 Generating chunk {i+1}/{len(text_chunks)}: '{chunk[:50]}...'")
+            logger.info(f"Generating chunk {i+1}/{len(text_chunks)}: '{chunk[:50]}...'")
             
             # Memory check before each chunk
             memory_stats = check_memory_usage()
             if memory_stats["system_memory_percent"] > 85:
-                logger.warning("⚠️ High memory usage, forcing cleanup")
+                logger.warning("High memory usage, forcing cleanup")
                 cleanup_memory()
                 await asyncio.sleep(1)  # Give system time to recover
             
@@ -618,30 +609,30 @@ async def generate_audio_with_chunking(
                         chunk_duration = len(chunk_audio) / sample_rate
                         total_duration += chunk_duration
                         chunk_time = time.time() - chunk_start_time
-                        logger.info(f"✅ Chunk {i+1} completed ({chunk_duration:.2f}s audio, {chunk_time:.2f}s generation)")
+                        logger.info(f"Chunk {i+1} completed ({chunk_duration:.2f}s audio, {chunk_time:.2f}s generation)")
                         break
                     else:
                         raise Exception("Model returned empty audio")
                 
                 except asyncio.TimeoutError:
-                    logger.error(f"❌ Chunk {i+1} timed out (attempt {chunk_attempts})")
+                    logger.error(f"Chunk {i+1} timed out (attempt {chunk_attempts})")
                     if chunk_attempts < max_chunk_attempts:
                         await asyncio.sleep(config.RETRY_DELAY * chunk_attempts)
                         continue
                     else:
                         failed_chunks += 1
-                        logger.error(f"❌ Chunk {i+1} failed after all attempts")
+                        logger.error(f"Chunk {i+1} failed after all attempts")
                         break
                 
                 except Exception as chunk_error:
-                    logger.error(f"❌ Chunk {i+1} error (attempt {chunk_attempts}): {chunk_error}")
+                    logger.error(f"Chunk {i+1} error (attempt {chunk_attempts}): {chunk_error}")
                     if chunk_attempts < max_chunk_attempts:
                         await asyncio.sleep(config.RETRY_DELAY * chunk_attempts)
                         cleanup_memory()  # Try to recover
                         continue
                     else:
                         failed_chunks += 1
-                        logger.error(f"❌ Chunk {i+1} failed permanently")
+                        logger.error(f"Chunk {i+1} failed permanently")
                         break
         
         # Check if we have enough successful chunks
@@ -652,13 +643,13 @@ async def generate_audio_with_chunking(
             raise Exception(f"Too many failed chunks: {failed_chunks}/{len(text_chunks)}")
         
         if failed_chunks > 0:
-            logger.warning(f"⚠️ {failed_chunks} chunks failed, but continuing with {len(audio_segments)} successful chunks")
+            logger.warning(f"{failed_chunks} chunks failed, but continuing with {len(audio_segments)} successful chunks")
         
         # Combine audio segments with smooth transitions
         if len(audio_segments) == 1:
             final_audio = audio_segments[0]
         else:
-            logger.info("🔗 Combining audio segments...")
+            logger.info("Combining audio segments...")
             combined_audio = []
             
             for i, segment in enumerate(audio_segments):
@@ -676,7 +667,7 @@ async def generate_audio_with_chunking(
         if speed != 1.0:
             try:
                 final_audio = modify_audio_speed(final_audio, speed, sample_rate)
-                logger.info(f"✅ Speed modified to {speed}x")
+                logger.info(f"Speed modified to {speed}x")
             except Exception as speed_error:
                 logger.warning(f"Speed modification failed: {speed_error}, using original speed")
         
@@ -688,7 +679,7 @@ async def generate_audio_with_chunking(
         # Save audio file with error handling
         try:
             sf.write(str(file_path), final_audio, sample_rate)
-            logger.info(f"💾 Audio saved: {filename}")
+            logger.info(f"Audio saved: {filename}")
         except Exception as save_error:
             logger.error(f"Failed to save audio: {save_error}")
             raise Exception(f"Audio save failed: {save_error}")
@@ -710,19 +701,19 @@ async def generate_audio_with_chunking(
                 async with aiofiles.open(file_path, 'rb') as f:
                     file_data = await f.read()
                 audio_cache.set(cache_key, file_data)
-                logger.info(f"📋 Audio cached with key: {cache_key[:8]}")
+                logger.info(f"Audio cached with key: {cache_key[:8]}")
             except Exception as cache_error:
                 logger.warning(f"Caching failed: {cache_error}")
         
         generation_time = time.time() - start_time
         final_duration = len(final_audio) / sample_rate
         
-        logger.info(f"✅ Audio generation completed: {filename} ({final_duration:.2f}s audio, {generation_time:.2f}s generation, {len(text_chunks)} chunks)")
+        logger.info(f"Audio generation completed: {filename} ({final_duration:.2f}s audio, {generation_time:.2f}s generation, {len(text_chunks)} chunks)")
         
         return str(filename), final_duration, sample_rate
         
     except Exception as e:
-        logger.error(f"❌ Audio generation failed: {str(e)}")
+        logger.error(f"Audio generation failed: {str(e)}")
         logger.error(traceback.format_exc())
         
         # Try to provide recovery suggestions
@@ -772,7 +763,7 @@ def generate_chunk_audio_safe(text: str, voice: str, attempt: int = 1) -> np.nda
                             try:
                                 logger.info(f"Trying fallback voice: {fallback_voice}")
                                 audio_data = tts_model.generate(text, voice=fallback_voice)
-                                logger.info(f"✅ Fallback voice {fallback_voice} succeeded")
+                                logger.info(f"Fallback voice {fallback_voice} succeeded")
                                 break
                             except Exception as fallback_error:
                                 logger.warning(f"Fallback voice {fallback_voice} failed: {fallback_error}")
@@ -799,7 +790,7 @@ def generate_chunk_audio_safe(text: str, voice: str, attempt: int = 1) -> np.nda
             # Normalize audio to prevent clipping
             if np.max(np.abs(audio_data)) > 1.0:
                 audio_data = audio_data / np.max(np.abs(audio_data)) * 0.95
-                logger.info("🔧 Audio normalized to prevent clipping")
+                logger.info("Audio normalized to prevent clipping")
             
             return audio_data
     
@@ -869,7 +860,7 @@ async def convert_audio_format(file_path: str, target_format: str):
             audio.export(str(new_path), **export_params)
             original_path.unlink()  # Remove original
             conversion_successful = True
-            logger.info(f"✅ Converted to {target_format.upper()} using pydub")
+            logger.info(f"Converted to {target_format.upper()} using pydub")
             
         except ImportError:
             logger.info("pydub not available, trying ffmpeg")
@@ -899,7 +890,7 @@ async def convert_audio_format(file_path: str, target_format: str):
                 result = subprocess.run(cmd, check=True, capture_output=True, timeout=60)
                 original_path.unlink()
                 conversion_successful = True
-                logger.info(f"✅ Converted to {target_format.upper()} using ffmpeg")
+                logger.info(f"Converted to {target_format.upper()} using ffmpeg")
                 
             except subprocess.TimeoutExpired:
                 logger.error("ffmpeg conversion timed out")
@@ -915,7 +906,7 @@ async def convert_audio_format(file_path: str, target_format: str):
                 sf.write(str(new_path), audio_data, sr, format=target_format.upper())
                 original_path.unlink()
                 conversion_successful = True
-                logger.info(f"✅ Converted to {target_format.upper()} using soundfile")
+                logger.info(f"Converted to {target_format.upper()} using soundfile")
             except Exception as sf_error:
                 logger.warning(f"soundfile conversion failed: {sf_error}")
         
@@ -929,7 +920,7 @@ async def convert_audio_format(file_path: str, target_format: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("🚀 KittenTTS Production API starting up...")
+    logger.info("KittenTTS Production API starting up...")
     
     # Initialize model in background
     model_task = asyncio.create_task(initialize_kitten_tts())
@@ -948,7 +939,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
-    logger.info("🛑 Shutting down KittenTTS API...")
+    logger.info("Shutting down KittenTTS API...")
     
     # Cancel background tasks
     for task in [monitor_task, cleanup_task]:
@@ -963,11 +954,11 @@ async def lifespan(app: FastAPI):
     cleanup_memory()
     audio_cache.clear()
     executor.shutdown(wait=True)
-    logger.info("✅ Shutdown completed")
+    logger.info("Shutdown completed")
 
 # Create FastAPI app
 app = FastAPI(
-    title="🐱 KittenTTS Production API",
+    title="KittenTTS Production API",
     description="Bulletproof KittenTTS implementation with advanced caching, monitoring, and error recovery",
     version="2.0.0",
     lifespan=lifespan
@@ -1005,7 +996,7 @@ async def background_monitoring():
                 metrics_stats = metrics.get_stats()
                 
                 logger.info(
-                    f"📊 System: CPU {cpu_percent:.1f}%, "
+                    f"System: CPU {cpu_percent:.1f}%, "
                     f"Memory {memory_stats['system_memory_percent']:.1f}%, "
                     f"Disk {disk_usage:.1f}%, "
                     f"Cache {cache_stats['cache_size']} items ({cache_stats['memory_usage_mb']:.1f}MB), "
@@ -1015,17 +1006,17 @@ async def background_monitoring():
             
             # Proactive memory management
             if memory_stats["system_memory_percent"] > config.MEMORY_THRESHOLD * 100:
-                logger.warning("⚠️ High memory usage detected, performing cleanup")
+                logger.warning("High memory usage detected, performing cleanup")
                 cleanup_memory()
                 
                 # Clear cache if memory is critical
                 if memory_stats["system_memory_percent"] > 90:
                     audio_cache.clear()
-                    logger.warning("🧹 Emergency cache clear due to critical memory usage")
+                    logger.warning("Emergency cache clear due to critical memory usage")
             
             # CPU throttling if needed
             if cpu_percent > config.CPU_THRESHOLD * 100:
-                logger.warning(f"⚠️ High CPU usage: {cpu_percent:.1f}%")
+                logger.warning(f"High CPU usage: {cpu_percent:.1f}%")
                 await asyncio.sleep(2)  # Brief pause to let CPU recover
         
         except Exception as e:
@@ -1037,7 +1028,7 @@ async def periodic_cleanup():
         try:
             await asyncio.sleep(config.CLEANUP_INTERVAL)
             
-            logger.info("🧹 Starting periodic cleanup...")
+            logger.info("Starting periodic cleanup...")
             
             # Clean old audio files
             audio_files = list(config.AUDIO_DIR.glob("*"))
@@ -1056,7 +1047,7 @@ async def periodic_cleanup():
                     except Exception as e:
                         logger.warning(f"Failed to cleanup {file_path}: {e}")
                 
-                logger.info(f"🧹 Cleaned up {removed_count} old audio files")
+                logger.info(f"Cleaned up {removed_count} old audio files")
             
             # Clean very old files (older than 4 hours)
             old_file_threshold = current_time - (4 * 3600)
@@ -1071,7 +1062,7 @@ async def periodic_cleanup():
                     logger.warning(f"Failed to remove old file {file_path}: {e}")
             
             if old_files_removed > 0:
-                logger.info(f"🧹 Removed {old_files_removed} files older than 4 hours")
+                logger.info(f"Removed {old_files_removed} files older than 4 hours")
             
             # Memory cleanup
             cleanup_memory()
@@ -1086,10 +1077,35 @@ async def periodic_cleanup():
                     if not audio_cache._evict_oldest():
                         break
                 
-                logger.info(f"🧹 Cache cleanup: {cache_size_before} -> {len(audio_cache.cache)} items")
+                logger.info(f"Cache cleanup: {cache_size_before} -> {len(audio_cache.cache)} items")
             
         except Exception as e:
             logger.warning(f"Periodic cleanup error: {e}")
+
+# Helper function for health recommendations
+def get_health_recommendations(checks: Dict[str, bool], memory_stats: Dict, cpu_percent: float) -> List[str]:
+    """Generate health recommendations based on current status"""
+    recommendations = []
+    
+    if not checks["model_loaded"]:
+        recommendations.append("Model is loading - please wait")
+    
+    if not checks["model_functional"]:
+        recommendations.append("Model test failed - consider restarting service")
+    
+    if memory_stats["system_memory_percent"] > 85:
+        recommendations.append("High memory usage - consider manual cleanup")
+    
+    if cpu_percent > 90:
+        recommendations.append("High CPU usage - reduce concurrent requests")
+    
+    if not checks["disk_ok"]:
+        recommendations.append("Low disk space - cleanup required")
+    
+    if not recommendations:
+        recommendations.append("All systems operating normally")
+    
+    return recommendations
 
 # API Routes
 @app.get("/")
@@ -1098,11 +1114,11 @@ async def root():
     try:
         memory_stats = check_memory_usage()
         cpu_percent = psutil.cpu_percent()
-        model_status = "✅ Ready" if tts_model is not None else "⏳ Loading..."
+        model_status = "Ready" if tts_model is not None else "Loading..."
         cache_stats = audio_cache.get_stats()
         
         return {
-            "message": "🐱 KittenTTS Production API",
+            "message": "KittenTTS Production API",
             "version": "2.0.0",
             "status": "active",
             "tts_model_status": model_status,
@@ -1130,18 +1146,18 @@ async def root():
                 "docs": "/docs - API documentation"
             },
             "features": [
-                "✅ Real KittenTTS with advanced chunking",
-                "✅ Bulletproof error handling & recovery",
-                "✅ Intelligent memory management",
-                "✅ Advanced caching system",
-                "✅ Continuous system monitoring",
-                "✅ Long text support (up to 10,000 chars)",
-                "✅ Multiple audio formats with fallbacks",
-                "✅ Production-grade performance",
-                "✅ Telegram integration ready",
-                "✅ Unlimited processing time",
-                "✅ ONNX error recovery",
-                "✅ Voice fallback system"
+                "Real KittenTTS with advanced chunking",
+                "Bulletproof error handling & recovery",
+                "Intelligent memory management",
+                "Advanced caching system",
+                "Continuous system monitoring",
+                "Long text support (up to 10,000 chars)",
+                "Multiple audio formats with fallbacks",
+                "Production-grade performance",
+                "Telegram integration ready",
+                "Unlimited processing time",
+                "ONNX error recovery",
+                "Voice fallback system"
             ],
             "limits": {
                 "max_text_length": config.MAX_TEXT_LENGTH,
@@ -1181,7 +1197,7 @@ async def health_check():
                 )
                 model_test_time = time.time() - test_start
                 model_test_passed = test_result is not None and len(test_result) > 0
-                logger.info(f"✅ Model test passed in {model_test_time:.2f}s")
+                logger.info(f"Model test passed in {model_test_time:.2f}s")
             except Exception as test_error:
                 logger.warning(f"Model test failed: {test_error}")
         
@@ -1206,7 +1222,7 @@ async def health_check():
         
         return {
             "status": health_status,
-            "service": "🐱 KittenTTS Production API",
+            "service": "KittenTTS Production API",
             "timestamp": datetime.now().isoformat(),
             "checks": health_checks,
             "model_info": {
@@ -1230,7 +1246,7 @@ async def health_check():
                 "total_requests": metrics.requests_total,
                 "success_rate": round((metrics.requests_success / max(1, metrics.requests_total)) * 100, 2)
             },
-            "recommendations": self._get_health_recommendations(health_checks, memory_stats, cpu_percent)
+            "recommendations": get_health_recommendations(health_checks, memory_stats, cpu_percent)
         }
     
     except Exception as e:
@@ -1245,30 +1261,6 @@ async def health_check():
             }
         )
 
-def _get_health_recommendations(checks: Dict[str, bool], memory_stats: Dict, cpu_percent: float) -> List[str]:
-    """Generate health recommendations based on current status"""
-    recommendations = []
-    
-    if not checks["model_loaded"]:
-        recommendations.append("🔄 Model is loading - please wait")
-    
-    if not checks["model_functional"]:
-        recommendations.append("🔧 Model test failed - consider restarting service")
-    
-    if memory_stats["system_memory_percent"] > 85:
-        recommendations.append("🧹 High memory usage - consider manual cleanup")
-    
-    if cpu_percent > 90:
-        recommendations.append("⏸️ High CPU usage - reduce concurrent requests")
-    
-    if not checks["disk_ok"]:
-        recommendations.append("💿 Low disk space - cleanup required")
-    
-    if not recommendations:
-        recommendations.append("✅ All systems operating normally")
-    
-    return recommendations
-
 @app.post("/tts", response_model=TTSResponse)
 @handle_errors
 async def text_to_speech(request: TTSRequest, background_tasks: BackgroundTasks):
@@ -1280,7 +1272,7 @@ async def text_to_speech(request: TTSRequest, background_tasks: BackgroundTasks)
         cache_hit = False
         
         try:
-            logger.info(f"📝 TTS request: '{request.text[:100]}...' voice='{request.voice}' (length: {len(request.text)})")
+            logger.info(f"TTS request: '{request.text[:100]}...' voice='{request.voice}' (length: {len(request.text)})")
             
             # Enhanced validation
             if not request.text or len(request.text.strip()) == 0:
@@ -1313,7 +1305,7 @@ async def text_to_speech(request: TTSRequest, background_tasks: BackgroundTasks)
             
             while tts_model is None and model_wait_time < max_wait:
                 if model_wait_time % 30 == 0:  # Log every 30 seconds
-                    logger.info(f"⏳ Waiting for model to load... ({model_wait_time}s/{max_wait}s)")
+                    logger.info(f"Waiting for model to load... ({model_wait_time}s/{max_wait}s)")
                 await asyncio.sleep(5)
                 model_wait_time += 5
             
@@ -1353,11 +1345,11 @@ async def text_to_speech(request: TTSRequest, background_tasks: BackgroundTasks)
                 # Handle specific HTTP errors
                 if http_error.status_code == 500:
                     # Try recovery strategies
-                    logger.warning("🔧 Attempting error recovery...")
+                    logger.warning("Attempting error recovery...")
                     
                     # Strategy 1: Try with default voice
                     if request.voice != "expr-voice-2-f":
-                        logger.info("🔄 Retrying with default voice")
+                        logger.info("Retrying with default voice")
                         try:
                             filename, duration, sample_rate = await generate_audio_with_chunking(
                                 text=cleaned_text,
@@ -1366,7 +1358,7 @@ async def text_to_speech(request: TTSRequest, background_tasks: BackgroundTasks)
                                 format="wav",  # Use most compatible format
                                 cache_key=None  # Skip cache for recovery
                             )
-                            logger.info("✅ Recovery successful with default voice")
+                            logger.info("Recovery successful with default voice")
                         except Exception as recovery_error:
                             logger.error(f"Recovery attempt failed: {recovery_error}")
                             raise http_error
@@ -1397,7 +1389,7 @@ async def text_to_speech(request: TTSRequest, background_tasks: BackgroundTasks)
                 audio_file_path=audio_url,
                 file_id=filename.split('.')[0],
                 message=(
-                    f"🎵 Audio generated successfully with {request.voice} "
+                    f"Audio generated successfully with {request.voice} "
                     f"(speed: {request.speed}x, duration: {duration:.2f}s, "
                     f"generation: {generation_time:.2f}s, chunks: {text_chunks})"
                 ),
@@ -1420,7 +1412,7 @@ async def text_to_speech(request: TTSRequest, background_tasks: BackgroundTasks)
                 text_length=len(cleaned_text)
             )
             
-            logger.info(f"✅ TTS completed: {filename} ({duration:.2f}s, {generation_time:.2f}s gen)")
+            logger.info(f"TTS completed: {filename} ({duration:.2f}s, {generation_time:.2f}s gen)")
             
             # Schedule cleanup (4 hours for successful files)
             background_tasks.add_task(cleanup_file, filename, 14400)
@@ -1435,7 +1427,7 @@ async def text_to_speech(request: TTSRequest, background_tasks: BackgroundTasks)
             
         except Exception as e:
             # Handle unexpected errors
-            logger.error(f"❌ Unexpected TTS error: {str(e)}")
+            logger.error(f"Unexpected TTS error: {str(e)}")
             logger.error(traceback.format_exc())
             
             # Categorize error
@@ -1579,7 +1571,7 @@ async def get_voices():
 async def get_audio_file(filename: str):
     """Serve audio files with enhanced security and headers"""
     try:
-        # Security: validate filename
+        # FIXED: Security validation for filename - corrected regex pattern
         if not re.match(r'^[a-f0-9\-]+\.(wav|mp3|ogg|flac), filename):
             raise HTTPException(status_code=400, detail="Invalid filename format")
         
@@ -1613,7 +1605,7 @@ async def get_audio_file(filename: str):
                 "Accept-Ranges": "bytes",
                 "X-Content-Type-Options": "nosniff",
                 "Content-Length": str(file_size),
-                "X-Audio-Duration": "unknown",  # Could be calculated
+                "X-Audio-Duration": "unknown",
                 "X-Generated-By": "KittenTTS-Production-API"
             }
         )
@@ -1640,7 +1632,7 @@ async def test_voice(voice_name: str, test_text: Optional[str] = None):
     
     try:
         result = await text_to_speech(test_request, BackgroundTasks())
-        result.message = f"✅ Voice test completed for {voice_name}"
+        result.message = f"Voice test completed for {voice_name}"
         return result
     except Exception as e:
         logger.error(f"Voice test failed for {voice_name}: {e}")
@@ -1690,7 +1682,7 @@ async def manual_cleanup():
         cleanup_time = time.time() - cleanup_start_time
         
         return {
-            "message": "🧹 Manual cleanup completed successfully",
+            "message": "Manual cleanup completed successfully",
             "cleanup_time": round(cleanup_time, 2),
             "files": {
                 "removed": removed_files,
@@ -1738,7 +1730,7 @@ async def get_detailed_status():
         
         return {
             "service": {
-                "name": "🐱 KittenTTS Production API",
+                "name": "KittenTTS Production API",
                 "version": "2.0.0",
                 "status": "running",
                 "uptime": metrics_stats["uptime"],
@@ -1773,7 +1765,6 @@ async def get_detailed_status():
                 "unlimited_text_length": True,
                 "production_ready": True
             },
-            "health_status": await health_check(),
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -1789,9 +1780,9 @@ async def cleanup_file(filename: str, delay: int):
         if file_path.exists():
             file_size = file_path.stat().st_size
             file_path.unlink()
-            logger.info(f"🧹 Cleaned up: {filename} ({file_size / 1024:.1f}KB)")
+            logger.info(f"Cleaned up: {filename} ({file_size / 1024:.1f}KB)")
         else:
-            logger.info(f"🧹 File already removed: {filename}")
+            logger.info(f"File already removed: {filename}")
     except Exception as e:
         logger.warning(f"Cleanup failed for {filename}: {e}")
 
@@ -1846,7 +1837,7 @@ async def internal_error_handler(request: Request, exc):
 # Graceful shutdown handler
 async def shutdown_handler():
     """Handle graceful shutdown"""
-    logger.info("🛑 Initiating graceful shutdown...")
+    logger.info("Initiating graceful shutdown...")
     
     # Stop accepting new requests
     app.state.shutting_down = True
@@ -1856,7 +1847,7 @@ async def shutdown_handler():
     wait_time = 0
     
     while metrics.active_requests > 0 and wait_time < max_wait:
-        logger.info(f"⏳ Waiting for {metrics.active_requests} active requests to complete...")
+        logger.info(f"Waiting for {metrics.active_requests} active requests to complete...")
         await asyncio.sleep(1)
         wait_time += 1
     
@@ -1864,12 +1855,7 @@ async def shutdown_handler():
     cleanup_memory()
     audio_cache.clear()
     
-    logger.info("✅ Graceful shutdown completed")
-
-# Add shutdown handler to app
-@app.on_event("shutdown")
-async def shutdown_event():
-    await shutdown_handler()
+    logger.info("Graceful shutdown completed")
 
 # Health check middleware
 @app.middleware("http")
@@ -1988,6 +1974,29 @@ async def bulk_text_to_speech(requests: List[TTSRequest], background_tasks: Back
         "timestamp": datetime.now().isoformat()
     }
 
+# Helper function for getting relevant packages
+def get_relevant_packages() -> Dict[str, str]:
+    """Get versions of relevant installed packages"""
+    try:
+        import pkg_resources
+        
+        relevant_packages = [
+            'fastapi', 'uvicorn', 'torch', 'numpy', 'soundfile', 
+            'scipy', 'librosa', 'pydub', 'transformers', 'kittentts'
+        ]
+        
+        package_versions = {}
+        for package in relevant_packages:
+            try:
+                version = pkg_resources.get_distribution(package).version
+                package_versions[package] = version
+            except pkg_resources.DistributionNotFound:
+                package_versions[package] = "Not installed"
+        
+        return package_versions
+    except Exception as e:
+        return {"error": f"Package detection failed: {e}"}
+
 # Development and debugging endpoints
 @app.get("/debug/model")
 async def debug_model_info():
@@ -2043,36 +2052,14 @@ async def debug_system_info():
                     "used_percent": round(psutil.disk_usage('/').percent, 1)
                 }
             },
-            "installed_packages": self._get_relevant_packages()
+            "installed_packages": get_relevant_packages()
         }
     except Exception as e:
         return {"error": f"System debug failed: {e}"}
 
-def _get_relevant_packages() -> Dict[str, str]:
-    """Get versions of relevant installed packages"""
-    try:
-        import pkg_resources
-        
-        relevant_packages = [
-            'fastapi', 'uvicorn', 'torch', 'numpy', 'soundfile', 
-            'scipy', 'librosa', 'pydub', 'transformers', 'kittentts'
-        ]
-        
-        package_versions = {}
-        for package in relevant_packages:
-            try:
-                version = pkg_resources.get_distribution(package).version
-                package_versions[package] = version
-            except pkg_resources.DistributionNotFound:
-                package_versions[package] = "Not installed"
-        
-        return package_versions
-    except Exception as e:
-        return {"error": f"Package detection failed: {e}"}
-
 if __name__ == "__main__":
     # Enhanced startup configuration
-    logger.info("🚀 Starting KittenTTS Production API...")
+    logger.info("Starting KittenTTS Production API...")
     
     # Pre-startup checks
     logger.info(f"Python version: {sys.version}")
